@@ -11,22 +11,257 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(haven)
 library(estimatr)
+library(ggplot2)
+
+nsw_dw_cpscontrol <- read_dta("nsw_cps_mixtape.dta") %>% 
+  mutate(agesq = age^2,
+         agecube = age^3,
+         educsq = educ*educ,
+         educcube = educ*educ*educ,
+         u74 = case_when(re74 == 0 ~ 1, TRUE ~ 0),
+         u75 = case_when(re75 == 0 ~ 1, TRUE ~ 0),
+         re74sq = re74^2,
+         re74cube = re74^3,
+         re75sq = re75^2,
+         re75cube = re75^3)
 ```
 
 ## Propensity Scores using Logit and OLS
 
-
+First, we estimate a Logit model using up to quadratic covariates, and a second Logit model using up to cubic covariates.  We then store the propensity scores (predictions of treatment) in new variables called quadpscore and cubepscore.
 
 ```{r}
-summary(cars)
+
+quad_logit_nsw <- glm(treat ~ age + agesq + educ + educsq + 
+                   marr + nodegree + black + hisp + re74 + 
+                   re74sq + re75 + re75sq + u74 + u75, 
+                 family = binomial(link = "logit"), 
+                 data = nsw_dw_cpscontrol)
+
+cube_logit_nsw <- glm(treat ~ age + agesq + agecube + educ + educsq + educcube +
+                        marr + nodegree + black + hisp + re74 +
+                        re74sq + re74cube + re75 + re75sq + re75cube + u74 + u75, 
+                      family = binomial(link = "logit"), 
+                      data = nsw_dw_cpscontrol)
+
+logit_nsw_dw_cpscontrol <- nsw_dw_cpscontrol %>% 
+  mutate(quadpscore = quad_logit_nsw$fitted.values, cubepscore = cube_logit_nsw$fitted.values)
+
+
 ```
 
-## Including Plots
+Next we take the mean pscore for the treated and untreated observations for each model.  Those values are reported below:
 
-You can also embed plots, for example:
+```{r}
+# mean pscore 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+logit_sumstat<- logit_nsw_dw_cpscontrol %>% 
+  group_by(treat)%>% 
+  summarize(logit_quad_mean = mean(quadpscore), logit_cube_mean = mean(cubepscore),
+            logit_quad_max = max(quadpscore), logit_cube_max = max(cubepscore),
+            logit_quad_min = min(quadpscore), logit_cube_min = min(cubepscore))
+logit_sumstat
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+We then look at histograms of propensity scores for each model for the treated and untreated observations.
+
+```{r message = FALSE, warning = FALSE}
+
+logit_nsw_dw_cpscontrol %>% 
+  filter(treat == 0) %>%
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Quadratic Logit Model Histogram for Untreated")
+
+logit_nsw_dw_cpscontrol %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Quadratic Logit Model Histogram for Treated")
+
+logit_nsw_dw_cpscontrol %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Cubic Logit Model Histogram for Untreated")
+
+logit_nsw_dw_cpscontrol %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Cubic Logit Model Histogram for Treated")
+
+
+```
+
+Next we go through this whole process again using OLS.  We estimate a model using up to quadratic covariates, then up to cubic covariates.  Then we will predict and observe the propensity scores for each model for untreated and treated observations.
+
+```{r message = FALSE, warning = FALSE}
+
+# estimating ols
+quad_ols_nsw <- lm(treat ~ age + agesq + educ + educsq + 
+                       marr + nodegree + black + hisp + re74 + 
+                       re74sq + re75 + re75sq +
+                       u74 + u75, data = nsw_dw_cpscontrol)
+
+cube_ols_nsw <- lm(treat ~ age + agesq + agecube + educ + educsq + educcube +
+                            marr + nodegree + black + hisp + re74 +
+                            re74sq + re74cube + re75 + re75sq + 
+                            re75cube + u74 + u75, data = nsw_dw_cpscontrol)
+
+ols_nsw_dw_cpscontrol <- nsw_dw_cpscontrol %>% 
+  mutate(quadpscore = quad_ols_nsw$fitted.values, cubepscore = cube_ols_nsw$fitted.values)
+
+
+
+# mean pscore 
+
+ols_sumstat<- ols_nsw_dw_cpscontrol %>% 
+  group_by(treat)%>% 
+  summarize(ols_quad_mean = mean(quadpscore), ols_cube_mean = mean(cubepscore),
+            ols_quad_max = max(quadpscore), ols_cube_max = max(cubepscore),
+            ols_quad_min = min(quadpscore), ols_cube_min = min(cubepscore))
+ols_sumstat
+
+
+# histogram
+ols_nsw_dw_cpscontrol %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Quadratic Linear Probability Model Histogram for Untreated")
+
+ols_nsw_dw_cpscontrol %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Quadratic Linear Probability Model Histogram for Treated")
+
+ols_nsw_dw_cpscontrol %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Cubic Linear Probability Model Histogram for Untreated")
+
+ols_nsw_dw_cpscontrol %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Cubic Linear Probability Model Histogram for Treated")
+
+```
+As you can observe, the average propensity scores for untreated observations is higher using OLS, and the average propensity score for treated observations is much lower using OLS.
+
+## Trim Data and Repeat Histograms
+Now we trim the data so that only propensity scores greater that 0.1, and less than 0.9 are included in the histograms.
+
+```{r}
+
+#drop pscores <0.1 and >0.9
+quad_cut_logit_data<- logit_nsw_dw_cpscontrol %>%
+  filter(quadpscore > 0.1 & quadpscore < 0.9)
+
+cube_cut_logit_data<- logit_nsw_dw_cpscontrol %>%
+  filter(cubepscore > 0.1 & cubepscore < 0.9)
+
+quad_cut_ols_data<- ols_nsw_dw_cpscontrol %>%
+  filter(quadpscore > 0.1 & quadpscore < 0.9)
+
+cube_cut_ols_data<- ols_nsw_dw_cpscontrol %>%
+  filter(cubepscore > 0.1 & cubepscore < 0.9)
+
+#average min max
+
+sumstat_quad_cut_logit_data<- quad_cut_logit_data %>% 
+  group_by(treat)%>% 
+  summarize(logit_quad_mean = mean(quadpscore), 
+            logit_quad_max = max(quadpscore), 
+            logit_quad_min = min(quadpscore))
+sumstat_quad_cut_logit_data
+
+sumstat_cube_cut_logit_data<- cube_cut_logit_data %>% 
+  group_by(treat)%>% 
+  summarize(logit_cube_mean = mean(cubepscore), 
+            logit_cube_max = max(cubepscore), 
+            logit_cube_min = min(cubepscore))
+sumstat_cube_cut_logit_data
+
+sumstat_quad_cut_ols_data<- quad_cut_ols_data %>% 
+  group_by(treat)%>% 
+  summarize(ols_quad_mean = mean(quadpscore), 
+            ols_quad_max = max(quadpscore), 
+            ols_quad_min = min(quadpscore))
+sumstat_quad_cut_ols_data
+
+sumstat_cube_cut_ols_data<- cube_cut_ols_data %>% 
+  group_by(treat)%>% 
+  summarize(ols_cube_mean = mean(cubepscore), 
+            ols_cube_max = max(cubepscore), 
+            ols_cube_min = min(cubepscore))
+sumstat_cube_cut_ols_data
+
+#repeat 1c
+
+quad_cut_logit_data%>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Trimmed Quadratic Logit Histogram for Untreated" )
+
+quad_cut_logit_data%>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Trimmed Quadratic Logit Histogram for Treated" )
+
+cube_cut_logit_data %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Trimmed Cubic Logit Model Histogram for Untreated" )
+
+cube_cut_logit_data %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Trimmed Cubic Logit Model Histogram for Treated" )
+
+quad_cut_ols_data %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Propensity Score for Untreated", caption = "using linear probability regression with quadratic terms")
+
+quad_cut_ols_data %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = quadpscore))+
+  labs(title = "Propensity Score for Treated", caption = "using linear probability regression with quadratic terms")
+
+cube_cut_ols_data %>% 
+  filter(treat == 0) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Propensity Score for Untreated", caption = "using linear regression with cubic terms")
+
+cube_cut_ols_data %>% 
+  filter(treat == 1) %>% 
+  ggplot() +
+  geom_histogram(aes(x = cubepscore))+
+  labs(title = "Propensity Score for Treated", caption = "using linear regression with cubic terms")
+
+
+
+```
+
+Repeating 1C with the trimmed data yields average propensity scores that are higher for the untreated and lower for the treated, as would be expected by removing the highest and lowest propensity scores.
+
+
+
+## Calculate Before and After First Difference for Each Unit
+
+In order to calculate the before and after first-difference for each unit,
+
+
+## Construct a Weighted Difference in Difference

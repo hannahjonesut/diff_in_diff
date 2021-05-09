@@ -6,7 +6,7 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 library(tidyverse)
 library(haven)
@@ -57,12 +57,20 @@ Next we take the mean pscore for the treated and untreated observations for each
 ```{r}
 # mean pscore 
 
-logit_sumstat<- logit_nsw_dw_cpscontrol %>% 
+logit_quad_sumstat<- logit_nsw_dw_cpscontrol %>% 
   group_by(treat)%>% 
-  summarize(logit_quad_mean = mean(quadpscore), logit_cube_mean = mean(cubepscore),
-            logit_quad_max = max(quadpscore), logit_cube_max = max(cubepscore),
-            logit_quad_min = min(quadpscore), logit_cube_min = min(cubepscore))
-logit_sumstat
+  summarize(logit_quad_mean = mean(quadpscore),
+            logit_quad_max = max(quadpscore), 
+            logit_quad_min = min(quadpscore))
+logit_quad_sumstat
+
+logit_cube_sumstat<- logit_nsw_dw_cpscontrol %>% 
+  group_by(treat)%>% 
+  summarize(logit_cube_mean = mean(cubepscore),
+           logit_cube_max = max(cubepscore),
+            logit_cube_min = min(cubepscore))
+logit_cube_sumstat
+
 
 ```
 
@@ -97,6 +105,8 @@ logit_nsw_dw_cpscontrol %>%
 
 ```
 
+
+
 Next we go through this whole process again using OLS.  We estimate a model using up to quadratic covariates, then up to cubic covariates.  Then we will predict and observe the propensity scores for each model for untreated and treated observations.
 
 ```{r message = FALSE, warning = FALSE}
@@ -119,12 +129,19 @@ ols_nsw_dw_cpscontrol <- nsw_dw_cpscontrol %>%
 
 # mean pscore 
 
-ols_sumstat<- ols_nsw_dw_cpscontrol %>% 
+ols_quad_sumstat<- ols_nsw_dw_cpscontrol %>% 
   group_by(treat)%>% 
-  summarize(ols_quad_mean = mean(quadpscore), ols_cube_mean = mean(cubepscore),
-            ols_quad_max = max(quadpscore), ols_cube_max = max(cubepscore),
-            ols_quad_min = min(quadpscore), ols_cube_min = min(cubepscore))
-ols_sumstat
+  summarize(ols_quad_mean = mean(quadpscore), 
+            ols_quad_max = max(quadpscore),
+            ols_quad_min = min(quadpscore))
+ols_quad_sumstat
+
+ols_cube_sumstat<- ols_nsw_dw_cpscontrol %>% 
+  group_by(treat)%>% 
+  summarize(ols_cube_mean = mean(cubepscore),
+            ols_cube_max = max(cubepscore),
+            ols_cube_min = min(cubepscore))
+ols_cube_sumstat
 
 
 # histogram
@@ -153,7 +170,9 @@ ols_nsw_dw_cpscontrol %>%
   labs(title = "Cubic Linear Probability Model Histogram for Treated")
 
 ```
-As you can observe, the average propensity scores for untreated observations is higher using OLS, and the average propensity score for treated observations is much lower using OLS.
+
+
+As you can observe, the average propensity scores for untreated observations is higher using OLS, and the average propensity score for treated observations is much lower using OLS.  OLS is giving us results less than zero which is weighting it downwards.
 
 ## Trim Data and Repeat Histograms
 Now we trim the data so that only propensity scores greater that 0.1, and less than 0.9 are included in the histograms.
@@ -173,7 +192,7 @@ quad_cut_ols_data<- ols_nsw_dw_cpscontrol %>%
 cube_cut_ols_data<- ols_nsw_dw_cpscontrol %>%
   filter(cubepscore > 0.1 & cubepscore < 0.9)
 
-#average min max
+#average min max for all 4 models
 
 sumstat_quad_cut_logit_data<- quad_cut_logit_data %>% 
   group_by(treat)%>% 
@@ -202,20 +221,14 @@ sumstat_cube_cut_ols_data<- cube_cut_ols_data %>%
             ols_cube_max = max(cubepscore), 
             ols_cube_min = min(cubepscore))
 sumstat_cube_cut_ols_data
+```
 
+
+Now we repeat the histograms using the trimmed data.  Moving forward I will only use the Logit model with the cubic covariates, and the OLS model with the quadratic covariates.
+
+```{r}
 #repeat 1c
 
-quad_cut_logit_data%>% 
-  filter(treat == 0) %>% 
-  ggplot() +
-  geom_histogram(aes(x = quadpscore))+
-  labs(title = "Trimmed Quadratic Logit Histogram for Untreated" )
-
-quad_cut_logit_data%>% 
-  filter(treat == 1) %>% 
-  ggplot() +
-  geom_histogram(aes(x = quadpscore))+
-  labs(title = "Trimmed Quadratic Logit Histogram for Treated" )
 
 cube_cut_logit_data %>% 
   filter(treat == 0) %>% 
@@ -233,27 +246,13 @@ quad_cut_ols_data %>%
   filter(treat == 0) %>% 
   ggplot() +
   geom_histogram(aes(x = quadpscore))+
-  labs(title = "Propensity Score for Untreated", caption = "using linear probability regression with quadratic terms")
+  labs(title = "Trimmed Quadratic OLS Model Histogram for Un-treated")
 
 quad_cut_ols_data %>% 
   filter(treat == 1) %>% 
   ggplot() +
   geom_histogram(aes(x = quadpscore))+
-  labs(title = "Propensity Score for Treated", caption = "using linear probability regression with quadratic terms")
-
-cube_cut_ols_data %>% 
-  filter(treat == 0) %>% 
-  ggplot() +
-  geom_histogram(aes(x = cubepscore))+
-  labs(title = "Propensity Score for Untreated", caption = "using linear regression with cubic terms")
-
-cube_cut_ols_data %>% 
-  filter(treat == 1) %>% 
-  ggplot() +
-  geom_histogram(aes(x = cubepscore))+
-  labs(title = "Propensity Score for Treated", caption = "using linear regression with cubic terms")
-
-
+  labs(title = "Trimmed Quadratic OLS Model Histogram for Treated")
 
 ```
 
@@ -268,20 +267,12 @@ Moving forward, I will only be using the model with cubic covariates for Logit a
 
 #LOGIT
 
-#cube_cut_logit_data  %>% 
- # filter(treat == 1) %>% 
- # summary(re78)
-
 mean1 <- cube_cut_logit_data%>% 
   filter(treat == 1) %>% 
   pull(re78) %>% 
   mean()
 
 cube_cut_logit_data$y1 <- mean1
-
-#cube_cut_logit_data%>% 
- # filter(treat == 0) %>% 
-  #summary(re78)
 
 mean0 <- cube_cut_logit_data%>% 
   filter(treat == 0) %>% 
@@ -302,13 +293,8 @@ cube_cut_logit_data <- cube_cut_logit_data%>%
 
 Using the logit model without weights, the first difference is ~ $1724.
 
-
 ```{r}
 #OLS
-
-#quad_cut_ols_data %>% 
- # filter(treat == 1) %>% 
-  #summary(re78)
 
 mean1 <- quad_cut_ols_data %>% 
   filter(treat == 1) %>% 
@@ -316,10 +302,6 @@ mean1 <- quad_cut_ols_data %>%
   mean()
 
 quad_cut_ols_data$y1 <- mean1
-
-#quad_cut_ols_data %>% 
- # filter(treat == 0) %>% 
-  #summary(re78)
 
 mean0 <- quad_cut_ols_data%>% 
   filter(treat == 0) %>% 
@@ -337,7 +319,6 @@ atedf
 quad_cut_ols_data <- quad_cut_ols_data %>% 
   select(-y1, -y0)
 
-
 ```
 
 Using the OLS model without weights, the first difference is ~ -$5014.
@@ -351,7 +332,6 @@ Now I construct a weighted difference in difference using normalized and non-nor
 #number 3: Construct a Weighted Difference in Difference
   
 #LOGIT
-#continuation
 N <- nrow(cube_cut_logit_data )
 #- Manual with non-normalized weights using all data
   cube_cut_logit_data  <- cube_cut_logit_data  %>% 
@@ -385,7 +365,7 @@ df<- data.frame(Non_normalized_ATT, Normalized_ATT)
 df
 ```
 
-Above are the average 
+Above are the average normalized and non-normalized average treatment effects for the treated observations using the logit propensity score prediction weights.  This result suggest that  the effect of the treatment is an increase in wages of about $1700.
 
 
 ```{r}
@@ -425,3 +405,5 @@ df
 
 
 ```
+
+Above are the average normalized and non-normalized average treatment effects for the treated observations using the ols propensity score prediction weights.  This result suggest that  the effect of the treatment is a decrease in wages of about $5000.
